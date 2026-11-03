@@ -1,0 +1,16 @@
+# Environment secrets (NEVER commit this)
+.env
+
+# Python Virtual Environment
+.venv/
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# PyCharm settings
+.idea/
+
+# Mac OS files
+.DS_Store

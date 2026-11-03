@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+psycopg[binary]
+python-dotenv
+groq
+streamlit
+pandas
+plotly
+requests
