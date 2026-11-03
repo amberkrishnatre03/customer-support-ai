@@ -14,8 +14,8 @@ A full-stack customer support and management system built with **FastAPI**, **Po
 
 ## 🚀 Live Demo
 
-* **Live Application:** [https://customer-support-ai.onrender.com](https://customer-support-ai.onrender.com)
-* **Interactive API Documentation:** `https://customer-support-ai.onrender.com/docs`
+* **Live Application:** (https://customer-support-ai.onrender.com)
+* **Interactive API Docs (Swagger):** `http://localhost:8000/docs` (when running locally)
 
 ---
 
