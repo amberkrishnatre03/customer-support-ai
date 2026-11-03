@@ -14,24 +14,93 @@ st.set_page_config(
 
 st.title("🎧 AI-Powered Customer Support System")
 
-
-# Navigation Menu on Sidebar
+# Clean, Uncluttered 3-Page Sidebar
 page = st.sidebar.radio(
     "Navigation",
-    ["Overview & Analytics", "Customer Support Chat", "Orders Management", "Customers", "Products", "Support Tickets"]
+    ["💬 AI Customer Support", "📊 Statistical EDA & Insights", "🛠️ Database & Operations Hub"]
 )
 
-# --------------------------------------------------
-# 1. OVERVIEW & ANALYTICS
-# --------------------------------------------------
-# --------------------------------------------------
-# 1. OVERVIEW & ANALYTICS
-# --------------------------------------------------
-if page == "Overview & Analytics":
-    st.header("📊 Business & Support Analytics")
+
+# ==================================================
+# PAGE 1: 💬 AI CUSTOMER SUPPORT (THE HERO)
+# ==================================================
+if page == "💬 AI Customer Support":
+    st.header("💬 AI Customer Support Assistant")
+    st.caption("Powered by Groq LLM (openai/gpt-oss-20b) & PostgreSQL")
+
+    # Customer Email for Verification
+    cust_email = st.text_input("Customer Email (for identity verification):", value="alice@example.com")
+
+    # --------------------------------------------------
+    # Quick Clickable Suggested Prompts
+    # --------------------------------------------------
+    st.write("**💡 Click a suggested question to try it instantly:**")
+    prompt_to_send = None
+    b1, b2, b3, b4 = st.columns(4)
+
+    if b1.button("📦 Where is ORD0001?"):
+        prompt_to_send = "Where is my order ORD0001?"
+    if b2.button("📋 My Order History"):
+        prompt_to_send = "Show my recent orders"
+    if b3.button("❌ Cancel ORD0003"):
+        prompt_to_send = "I want to cancel order ORD0003"
+    if b4.button("⚠️ Damaged Item"):
+        prompt_to_send = "I received a damaged product and need help"
+
+    st.divider()
+
+    # Session State for Conversation
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Display Chat History
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+
+    # Chat Input Box
+    user_input = st.chat_input("Type your question here...")
+    active_message = user_input or prompt_to_send
+
+    # Process Active Message
+    if active_message:
+        st.session_state.messages.append({"role": "user", "content": active_message})
+        with st.chat_message("user"):
+            st.write(active_message)
+
+        with st.chat_message("assistant"):
+            with st.spinner("AI is verifying database records..."):
+                try:
+                    res = requests.post(
+                        f"{API_URL}/chat",
+                        json={
+                            "message": active_message,
+                            "customer_email": cust_email,
+                            "chat_history": st.session_state.messages
+                        }
+                    ).json()
+
+                    reply = res.get("reply", "No response from server.")
+                    ticket_id = res.get("ticket_id")
+
+                    st.write(reply)
+                    if ticket_id:
+                        st.caption(f"🎫 Automatically logged to PostgreSQL as Support Ticket #{ticket_id}")
+
+                    st.session_state.messages.append({"role": "assistant", "content": reply})
+
+                except Exception as e:
+                    st.error(f"Error communicating with AI backend: {e}")
+
+
+# ==================================================
+# PAGE 2: 📊 STATISTICAL EDA & INSIGHTS (DATA SCIENCE)
+# ==================================================
+elif page == "📊 Statistical EDA & Insights":
+    st.header("📊 Exploratory Data Analysis (EDA) & Customer Intelligence")
+    st.caption("Statistical distribution metrics, quartile spreads, and behavioral segmentation")
 
     try:
-        # Fetch fresh data from FastAPI
         orders = requests.get(f"{API_URL}/orders").json()
         customers = requests.get(f"{API_URL}/customers").json()
         products = requests.get(f"{API_URL}/products").json()
@@ -43,268 +112,193 @@ if page == "Overview & Analytics":
 
         if not df_orders.empty:
             df_orders["total_amount"] = df_orders["total_amount"].astype(float)
+            df_orders["order_date"] = pd.to_datetime(df_orders["order_date"])
 
-        # --------------------------------------------------
-        # Top KPI Metric Cards
-        # --------------------------------------------------
+        # Statistical Calculations
         total_rev = df_orders["total_amount"].sum() if not df_orders.empty else 0
-        open_tickets = (df_tickets["status"] == "Open").sum() if not df_tickets.empty else 0
+        mean_spend = df_orders["total_amount"].mean() if not df_orders.empty else 0
+        median_spend = df_orders["total_amount"].median() if not df_orders.empty else 0
 
+        # Repeat Customer Rate (% with 2+ orders)
+        if not df_orders.empty:
+            cust_counts = df_orders["customer_name"].value_counts()
+            repeat_rate = ((cust_counts > 1).sum() / len(cust_counts)) * 100
+        else:
+            repeat_rate = 0.0
+
+        # Contact-to-Order Ratio (Complaint Rate)
+        complaint_rate = (len(df_tickets) / len(df_orders) * 100) if len(df_orders) > 0 else 0.0
+
+        # Top Statistical Metric Cards
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Total Customers", len(customers))
-        c2.metric("Total Products", len(products))
-        c3.metric("Total Orders", len(orders))
-        c4.metric("Total Revenue", f"${total_rev:,.2f}")
+        c1.metric("Gross Revenue", f"${total_rev:,.2f}")
+        c2.metric("Mean / Median (Skewness)", f"${mean_spend:,.0f} / ${median_spend:,.0f}")
+        c3.metric("Repeat Customer Rate", f"{repeat_rate:.1f}%")
+        c4.metric("Support Ticket Rate", f"{complaint_rate:.1f}%")
 
         st.divider()
 
-        # --------------------------------------------------
-        # Interactive Filter (Select Category)
-        # --------------------------------------------------
+        # Master Category Filter
         categories = ["All"] + sorted(list(df_orders["category"].unique())) if not df_orders.empty else ["All"]
-        selected_cat = st.selectbox("🔍 Filter Data by Product Category:", categories)
+        selected_cat = st.selectbox("🔍 Filter EDA by Product Category:", categories)
 
-        # Filter dataframe based on user selection
         filtered_orders = df_orders if selected_cat == "All" else df_orders[df_orders["category"] == selected_cat]
 
-        # --------------------------------------------------
-        # Row 1: Order Status & Top Selling Products
-        # --------------------------------------------------
-        row1_col1, row1_col2 = st.columns(2)
+        # ROW 1: Statistical Box Plot + Transaction Histogram
+        r1_c1, r1_c2 = st.columns(2)
 
-        with row1_col1:
-            st.subheader("Order Status Distribution")
-            fig_status = px.pie(
-                filtered_orders,
-                names="status",
-                hole=0.45,
-                color="status",
-                color_discrete_map={
-                    "Delivered": "#22A06B",
-                    "Shipped": "#2E86DE",
-                    "Pending": "#F39C12",
-                    "Cancelled": "#E74C3C"
-                }
-            )
-            st.plotly_chart(fig_status, use_container_width=True)
-
-        with row1_col2:
-            st.subheader("Top Products by Revenue")
-            top_products = (
-                filtered_orders.groupby("product_name")["total_amount"]
-                .sum()
-                .reset_index()
-                .sort_values(by="total_amount", ascending=True)
-            )
-            fig_prod = px.bar(
-                top_products,
-                x="total_amount",
-                y="product_name",
-                orientation="h",
-                labels={"total_amount": "Revenue ($)", "product_name": "Product"},
-                color="total_amount",
-                color_continuous_scale="Blues"
-            )
-            st.plotly_chart(fig_prod, use_container_width=True)
-
-        st.divider()
-
-        # --------------------------------------------------
-        # Row 2: Warehouse Stock & Support Ticket Health
-        # --------------------------------------------------
-        row2_col1, row2_col2 = st.columns(2)
-
-        with row2_col1:
-            st.subheader("Warehouse Inventory Stock Levels")
-            fig_stock = px.bar(
-                df_products,
-                x="product_name",
-                y="stock",
-                labels={"stock": "Units in Stock", "product_name": "Product"},
-                color="category"
-            )
-            st.plotly_chart(fig_stock, use_container_width=True)
-
-        with row2_col2:
-            st.subheader("Support Tickets (Open vs Resolved)")
-            if not df_tickets.empty:
-                fig_tickets = px.pie(
-                    df_tickets,
-                    names="status",
-                    hole=0.45,
-                    color="status",
-                    color_discrete_map={"Resolved": "#22A06B", "Open": "#E74C3C"}
+        with r1_c1:
+            st.subheader("📦 Price Spread & Outliers by Category (Box Plot)")
+            if not filtered_orders.empty:
+                fig_box = px.box(
+                    filtered_orders,
+                    x="category",
+                    y="total_amount",
+                    color="category",
+                    points="all",
+                    labels={"total_amount": "Order Value ($)", "category": "Category"}
                 )
-                st.plotly_chart(fig_tickets, use_container_width=True)
-            else:
-                st.info("No support tickets yet.")
+                fig_box.update_layout(showlegend=False)
+                st.plotly_chart(fig_box, use_container_width=True)
+
+        with r1_c2:
+            st.subheader("📊 Transaction Value Distribution (Histogram)")
+            if not filtered_orders.empty:
+                fig_hist = px.histogram(
+                    filtered_orders,
+                    x="total_amount",
+                    nbins=12,
+                    labels={"total_amount": "Order Amount ($)"},
+                    color_discrete_sequence=["#2E86DE"]
+                )
+                fig_hist.update_layout(bargap=0.1)
+                st.plotly_chart(fig_hist, use_container_width=True)
 
         st.divider()
 
-        # --------------------------------------------------
-        # Row 3: Top 5 VIP Customers by Spend
-        # --------------------------------------------------
-        st.subheader("Top 5 Customers by Total Spend (Customer LTV)")
-        top_cust = (
-            df_orders.groupby("customer_name")["total_amount"]
-            .sum()
-            .reset_index()
-            .sort_values(by="total_amount", ascending=False)
-            .head(5)
-        )
-        fig_cust = px.bar(
-            top_cust,
-            x="customer_name",
-            y="total_amount",
-            labels={"total_amount": "Total Spend ($)", "customer_name": "Customer Name"},
-            color="total_amount",
-            color_continuous_scale="Greens"
-        )
-        st.plotly_chart(fig_cust, use_container_width=True)
+        # ROW 2: Customer RFM Scatter + Bivariate Status Bar
+        r2_c1, r2_c2 = st.columns(2)
+
+        with r2_c1:
+            st.subheader("🎯 Customer RFM Matrix (Frequency vs. Spend)")
+            if not filtered_orders.empty:
+                cust_rfm = filtered_orders.groupby("customer_name").agg(
+                    total_spend=("total_amount", "sum"),
+                    order_count=("order_id", "count")
+                ).reset_index()
+
+                fig_rfm = px.scatter(
+                    cust_rfm,
+                    x="order_count",
+                    y="total_spend",
+                    size="total_spend",
+                    color="customer_name",
+                    hover_name="customer_name",
+                    labels={"order_count": "Orders Placed (Frequency)", "total_spend": "Lifetime Spend ($)"}
+                )
+                st.plotly_chart(fig_rfm, use_container_width=True)
+
+        with r2_c2:
+            st.subheader("🔄 Fulfillment Status by Category (Cross-Analysis)")
+            if not filtered_orders.empty:
+                fig_status_cat = px.histogram(
+                    filtered_orders,
+                    x="category",
+                    color="status",
+                    barmode="group",
+                    color_discrete_map={
+                        "Delivered": "#22A06B",
+                        "Shipped": "#2E86DE",
+                        "Pending": "#F39C12",
+                        "Cancelled": "#E74C3C"
+                    },
+                    labels={"category": "Category", "count": "Orders"}
+                )
+                st.plotly_chart(fig_status_cat, use_container_width=True)
+
+        # Clean Hidden Drawer for Raw Data
+        with st.expander("🔍 Click to inspect raw orders dataset"):
+            st.dataframe(
+                df_orders[["order_id", "customer_name", "product_name", "category", "quantity", "total_amount", "status", "order_date"]],
+                use_container_width=True,
+                hide_index=True
+            )
 
     except Exception as e:
-        st.error(f"Cannot connect to FastAPI backend: {e}. Make sure uvicorn is running!")
+        st.error(f"Cannot connect to backend: {e}")
 
-# --------------------------------------------------
-# 2. CHATBOT INTERFACE
-# --------------------------------------------------
-elif page == "Customer Support Chat":
-    st.header("💬 AI Customer Support Assistant")
-    st.caption("Powered by Groq LLM & PostgreSQL")
 
-    # Customer Email for Verification
-    cust_email = st.text_input("Enter Customer Email for Verification:", value="alice@example.com")
+# ==================================================
+# PAGE 3: 🛠️ DATABASE & OPERATIONS HUB (ALL CRUD IN TABS)
+# ==================================================
+elif page == "🛠️ Database & Operations Hub":
+    st.header("🛠️ Relational Database Management Hub")
+    st.caption("Internal administration, CRUD operations, and live PostgreSQL audit logs")
 
-    # Session State to store conversation
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    tab_orders, tab_customers, tab_products, tab_tickets = st.tabs([
+        "📦 Orders Management",
+        "👥 Customers Management",
+        "🏷️ Product Catalog",
+        "🎫 Support Tickets (Audit)"
+    ])
 
-    # Show past messages
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.write(msg["content"])
+    # 1. ORDERS TAB
+    with tab_orders:
+        orders = requests.get(f"{API_URL}/orders").json()
+        st.dataframe(pd.DataFrame(orders), use_container_width=True)
 
-    # Chat Input
-    user_input = st.chat_input("Type your question here (e.g., 'Where is my order ORD0001?')...")
-    if user_input:
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.write(user_input)
+        st.subheader("Update Order Status")
+        with st.form("order_status_form"):
+            target_order = st.text_input("Order ID:", value="ORD0005")
+            new_status = st.selectbox("New Status:", ["Pending", "Shipped", "Delivered", "Cancelled"])
+            if st.form_submit_button("Update Status"):
+                res = requests.patch(f"{API_URL}/orders/{target_order}/status", json={"status": new_status})
+                if res.status_code == 200:
+                    st.success(f"Order {target_order} updated to {new_status}!")
+                    st.rerun()
 
-        with st.chat_message("assistant"):
-            with st.spinner("AI is checking database..."):
-                try:
-                    res = requests.post(
-                        f"{API_URL}/chat",
-                        json={
-                            "message": user_input,
-                            "customer_email": cust_email,
-                            "chat_history": st.session_state.messages
-                        }
-                    ).json()
+    # 2. CUSTOMERS TAB (View + Add + Edit)
+    with tab_customers:
+        customers = requests.get(f"{API_URL}/customers").json()
+        df_cust = pd.DataFrame(customers)
+        st.dataframe(df_cust, use_container_width=True)
 
-                    reply = res.get("reply", "No response from server.")
-                    ticket_id = res.get("ticket_id")
-
-                    st.write(reply)
-                    if ticket_id:
-                        st.caption(f"🎫 Logged as Support Ticket #{ticket_id}")
-
-                    st.session_state.messages.append({"role": "assistant", "content": reply})
-
-                except Exception as e:
-                    st.error(f"Error calling chatbot: {e}")
-
-# --------------------------------------------------
-# 3. ORDERS MANAGEMENT
-# --------------------------------------------------
-elif page == "Orders Management":
-    st.header("📦 Orders Management")
-    orders = requests.get(f"{API_URL}/orders").json()
-    st.dataframe(pd.DataFrame(orders), use_container_width=True)
-
-    st.subheader("Update Order Status")
-    with st.form("status_update_form"):
-        target_order = st.text_input("Order ID:", value="ORD0005")
-        new_status = st.selectbox("New Status:", ["Pending", "Shipped", "Delivered", "Cancelled"])
-        submit_btn = st.form_submit_button("Update Status")
-
-        if submit_btn:
-            resp = requests.patch(f"{API_URL}/orders/{target_order}/status", json={"status": new_status})
-            if resp.status_code == 200:
-                st.success(f"Order {target_order} updated to {new_status}!")
-                st.rerun()
-            else:
-                st.error("Failed to update order.")
-
-# --------------------------------------------------
-# 4. CUSTOMERS (Full View & Admin Editing)
-# --------------------------------------------------
-elif page == "Customers":
-    st.header("👥 Customers Management")
-
-    customers = requests.get(f"{API_URL}/customers").json()
-    df_cust = pd.DataFrame(customers)
-    st.dataframe(df_cust, use_container_width=True)
-
-    c1, c2 = st.columns(2)
-
-    # Box 1: Register New Customer
-    with c1:
-        st.subheader("➕ Register New Customer")
-        with st.form("new_customer_form"):
-            new_name = st.text_input("Full Name:")
-            new_email = st.text_input("Email Address:")
-            new_phone = st.text_input("Phone Number:", value="+1-555-0199")
-            submit_new = st.form_submit_button("Register Customer")
-
-            if submit_new:
-                if new_name and new_email:
-                    res = requests.post(f"{API_URL}/customers", json={"name": new_name, "email": new_email, "phone": new_phone})
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("➕ Register Customer")
+            with st.form("add_cust"):
+                n_name = st.text_input("Name:")
+                n_email = st.text_input("Email:")
+                n_phone = st.text_input("Phone:", value="+1-555-0199")
+                if st.form_submit_button("Add Customer"):
+                    res = requests.post(f"{API_URL}/customers", json={"name": n_name, "email": n_email, "phone": n_phone})
                     if res.status_code == 200:
-                        st.success(f"Customer {new_name} added!")
+                        st.success("Customer added!")
                         st.rerun()
-                    else:
-                        st.error("Email already exists or invalid data.")
 
-    # Box 2: Edit Existing Customer (Internal Admin Tool)
-    with c2:
-        st.subheader("🛠️ Admin: Edit Customer Profile")
-        if not df_cust.empty:
-            cust_options = {f"{row['name']} ({row['customer_id']})": row for _, row in df_cust.iterrows()}
-            selected_label = st.selectbox("Select Customer to Edit:", list(cust_options.keys()))
-            selected_data = cust_options[selected_label]
+        with col2:
+            st.subheader("🛠️ Edit Profile")
+            if not df_cust.empty:
+                cust_dict = {f"{r['name']} ({r['customer_id']})": r for _, r in df_cust.iterrows()}
+                chosen_lbl = st.selectbox("Select Customer:", list(cust_dict.keys()))
+                c_data = cust_dict[chosen_lbl]
 
-            with st.form("edit_customer_form"):
-                edit_name = st.text_input("Edit Name:", value=selected_data["name"])
-                edit_email = st.text_input("Edit Email:", value=selected_data["email"])
-                edit_phone = st.text_input("Edit Phone:", value=selected_data["phone"])
-                submit_edit = st.form_submit_button("Save Changes to Database")
+                with st.form("edit_cust"):
+                    e_name = st.text_input("Name:", value=c_data["name"])
+                    e_email = st.text_input("Email:", value=c_data["email"])
+                    e_phone = st.text_input("Phone:", value=c_data["phone"])
+                    if st.form_submit_button("Save Changes"):
+                        res = requests.put(f"{API_URL}/customers/{c_data['customer_id']}", json={"name": e_name, "email": e_email, "phone": e_phone})
+                        if res.status_code == 200:
+                            st.success("Profile updated!")
+                            st.rerun()
 
-                if submit_edit:
-                    target_id = selected_data["customer_id"]
-                    res = requests.put(
-                        f"{API_URL}/customers/{target_id}",
-                        json={"name": edit_name, "email": edit_email, "phone": edit_phone}
-                    )
-                    if res.status_code == 200:
-                        st.success(f"Updated {target_id} successfully!")
-                        st.rerun()
-                    else:
-                        st.error("Failed to update customer.")
+    # 3. PRODUCTS TAB
+    with tab_products:
+        products = requests.get(f"{API_URL}/products").json()
+        st.dataframe(pd.DataFrame(products), use_container_width=True)
 
-# --------------------------------------------------
-# 5. PRODUCTS
-# --------------------------------------------------
-elif page == "Products":
-    st.header("🏷️ Product Catalog")
-    products = requests.get(f"{API_URL}/products").json()
-    st.dataframe(pd.DataFrame(products), use_container_width=True)
-
-# --------------------------------------------------
-# 6. SUPPORT TICKETS
-# --------------------------------------------------
-elif page == "Support Tickets":
-    st.header("🎫 Support Tickets (Audit Logs)")
-    tickets = requests.get(f"{API_URL}/tickets").json()
-    st.dataframe(pd.DataFrame(tickets), use_container_width=True)
+    # 4. TICKETS TAB
+    with tab_tickets:
+        tickets = requests.get(f"{API_URL}/tickets").json()
+        st.dataframe(pd.DataFrame(tickets), use_container_width=True)
